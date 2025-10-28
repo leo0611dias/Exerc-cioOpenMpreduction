@@ -4,126 +4,186 @@
  * Objective : Exercício OpenMp reduction
  * Semester  : 2025/2
  * Professor : Rodrigo Gonçalves Pinto
- -------------------------------------------------------------------------------------------------------------------------*/
-
+ ------------------------------------------------------------------------------------------------------------------------*/
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <limits>
+#include <string>
 #include <omp.h>
-#include <iomanip>
-#include <random>
+
+// Função auxiliar para gerar dados de exemplo
+std::vector<double> gerar_dados_aleatorios(int tamanho) {
+    std::vector<double> dados(tamanho);
+    #pragma omp parallel for
+    for (int i = 0; i < tamanho; ++i) {
+        dados[i] = static_cast<double>(i + 1) * 1.5;
+    }
+    return dados;
+}
 
 int main() {
-    const int TOTAL_FUNCIONARIOS = 2000000;
-    std::vector<double> salarios(TOTAL_FUNCIONARIOS);
+    const int N = 1000000;
+    std::vector<double> dados = gerar_dados_aleatorios(N);
     
-    // BigTech fictícia: TechNova Americas
-    std::vector<std::string> departamentos = {
-        "Engenharia de Software", "Vendas e Marketing", "Recursos Humanos", 
-        "Finanças", "Operações", "Pesquisa e Desenvolvimento"
-    };
-    
-    std::vector<std::string> cargos = {
-        "Engenheiro Sênior", "Engenheiro Pleno", "Engenheiro Júnior",
-        "Analista", "Estagiário", "Gerente", "Diretor", "Especialista"
-    };
-    
-    std::vector<std::string> localizacoes = {
-        "EUA", "Brasil", "México", "Canadá", "Argentina", "Chile", "Colômbia"
-    };
+    std::cout << "=== DEMONSTRAÇÃO DAS OPERAÇÕES DE REDUCTION NO OpenMP ===" << std::endl;
+    std::cout << "Tamanho do conjunto de dados: " << N << std::endl << std::endl;
 
-    // Inicialização paralela com salários realistas baseados em localização e cargo
-    #pragma omp parallel for
-    for (int i = 0; i < TOTAL_FUNCIONARIOS; ++i) {
-        int dept_index = i % departamentos.size();
-        int cargo_index = i % cargos.size();
-        int loc_index = i % localizacoes.size();
-        
-        double salario_base;
-        
-        // Salários base por localização (em USD)
-        if (localizacoes[loc_index] == "EUA") {
-            salario_base = 80000.0;
-        } else if (localizacoes[loc_index] == "Canadá") {
-            salario_base = 70000.0;
-        } else if (localizacoes[loc_index] == "Brasil") {
-            salario_base = 40000.0;
-        } else {
-            salario_base = 35000.0; // Outros países latino-americanos
-        }
-        
-        // Ajuste por cargo
-        if (cargos[cargo_index] == "Estagiário") {
-            salario_base *= 0.4;
-        } else if (cargos[cargo_index] == "Engenheiro Júnior") {
-            salario_base *= 0.7;
-        } else if (cargos[cargo_index] == "Engenheiro Pleno") {
-            salario_base *= 1.0;
-        } else if (cargos[cargo_index] == "Engenheiro Sênior") {
-            salario_base *= 1.5;
-        } else if (cargos[cargo_index] == "Analista") {
-            salario_base *= 0.9;
-        } else if (cargos[cargo_index] == "Gerente") {
-            salario_base *= 1.8;
-        } else if (cargos[cargo_index] == "Diretor") {
-            salario_base *= 2.5;
-        } else if (cargos[cargo_index] == "Especialista") {
-            salario_base *= 1.3;
-        }
-        
-        // Variação individual baseada no ID do funcionário
-        double variacao = 1.0 + ((i % 100) - 50) * 0.01; // Variação de ±50%
-        salarios[i] = salario_base * variacao;
-    }
-
-    // 1. CÁLCULO DA MÉDIA usando reduction
+    // 1. REDUCTION COM SOMA (+)
     double soma = 0.0;
     #pragma omp parallel for reduction(+:soma)
-    for (int i = 0; i < TOTAL_FUNCIONARIOS; ++i) {
-        soma += salarios[i];
+    for (int i = 0; i < N; ++i) {
+        soma += dados[i];
     }
-    double media = soma / TOTAL_FUNCIONARIOS;
+    std::cout << "1. REDUCTION COM SOMA (+):" << std::endl;
+    std::cout << "   Soma total: " << soma << std::endl;
+    std::cout << "   Média: " << soma / N << std::endl << std::endl;
 
-    // 2. CÁLCULO DA VARIÂNCIA AMOSTRAL (dividindo por N-1)
-    double soma_quadrados = 0.0;
-    #pragma omp parallel for reduction(+:soma_quadrados)
-    for (int i = 0; i < TOTAL_FUNCIONARIOS; ++i) {
-        double diferenca = salarios[i] - media;
-        soma_quadrados += diferenca * diferenca;
+    // 2. REDUCTION COM MULTIPLICAÇÃO (*)
+    double produto = 1.0;
+    // Usamos um subconjunto menor para evitar overflow
+    const int N_mult = 100;
+    #pragma omp parallel for reduction(*:produto)
+    for (int i = 0; i < N_mult; ++i) {
+        produto *= (dados[i] / 1000.0); // Escalamos para evitar overflow
+    }
+    std::cout << "2. REDUCTION COM MULTIPLICAÇÃO (*):" << std::endl;
+    std::cout << "   Produto dos primeiros " << N_mult << " elementos (escalados): " << produto << std::endl << std::endl;
+
+    // 3. REDUCTION COM MÁXIMO (max)
+    double maximo = std::numeric_limits<double>::lowest();
+    #pragma omp parallel for reduction(max:maximo)
+    for (int i = 0; i < N; ++i) {
+        if (dados[i] > maximo) {
+            maximo = dados[i];
+        }
+    }
+    std::cout << "3. REDUCTION COM MÁXIMO (max):" << std::endl;
+    std::cout << "   Valor máximo: " << maximo << std::endl << std::endl;
+
+    // 4. REDUCTION COM MÍNIMO (min)
+    double minimo = std::numeric_limits<double>::max();
+    #pragma omp parallel for reduction(min:minimo)
+    for (int i = 0; i < N; ++i) {
+        if (dados[i] < minimo) {
+            minimo = dados[i];
+        }
+    }
+    std::cout << "4. REDUCTION COM MÍNIMO (min):" << std::endl;
+    std::cout << "   Valor mínimo: " << minimo << std::endl << std::endl;
+
+    // 5. REDUCTION COM OPERAÇÕES LÓGICAS - AND (&&)
+    bool todos_positivos = true;
+    #pragma omp parallel for reduction(&&:todos_positivos)
+    for (int i = 0; i < N; ++i) {
+        todos_positivos = todos_positivos && (dados[i] > 0);
+    }
+    std::cout << "5. REDUCTION COM AND LÓGICO (&&):" << std::endl;
+    std::cout << "   Todos os elementos são positivos? " << (todos_positivos ? "Sim" : "Não") << std::endl << std::endl;
+
+    // 6. REDUCTION COM OPERAÇÕES LÓGICAS - OR (||)
+    bool existe_negativo = false;
+    #pragma omp parallel for reduction(||:existe_negativo)
+    for (int i = 0; i < N; ++i) {
+        existe_negativo = existe_negativo || (dados[i] < 0);
+    }
+    std::cout << "6. REDUCTION COM OR LÓGICO (||):" << std::endl;
+    std::cout << "   Existe algum elemento negativo? " << (existe_negativo ? "Sim" : "Não") << std::endl << std::endl;
+
+    // 7. REDUCTION COM BITWISE AND (&) - exemplo com inteiros
+    int bitmask_and = ~0; // Todos os bits 1
+    std::vector<int> inteiros(N);
+    #pragma omp parallel for
+    for (int i = 0; i < N; ++i) {
+        inteiros[i] = i + 1;
     }
     
-    double variancia_amostral = soma_quadrados / (TOTAL_FUNCIONARIOS - 1);
-    double desvio_padrao_amostral = std::sqrt(variancia_amostral);
-
-    // 3. CÁLCULO DE ESTATÍSTICAS ADICIONAIS
-    double salario_maximo = 0.0;
-    double salario_minimo = std::numeric_limits<double>::max();
-    
-    #pragma omp parallel for reduction(max:salario_maximo) reduction(min:salario_minimo)
-    for (int i = 0; i < TOTAL_FUNCIONARIOS; ++i) {
-        if (salarios[i] > salario_maximo) salario_maximo = salarios[i];
-        if (salarios[i] < salario_minimo) salario_minimo = salarios[i];
+    #pragma omp parallel for reduction(&:bitmask_and)
+    for (int i = 0; i < N; ++i) {
+        bitmask_and &= inteiros[i];
     }
+    std::cout << "7. REDUCTION COM BITWISE AND (&):" << std::endl;
+    std::cout << "   Resultado do AND bit a bit: " << bitmask_and << std::endl << std::endl;
 
-    // APRESENTAÇÃO DOS RESULTADOS
-    std::cout << "======================================================" << std::endl;
-    std::cout << "TECHNOVA AMERICAS - RELATÓRIO SALARIAL" << std::endl;
-    std::cout << "======================================================" << std::endl;
-    std::cout << "Total de funcionários: " << TOTAL_FUNCIONARIOS << std::endl;
-    std::cout << "Departamentos: " << departamentos.size() << std::endl;
-    std::cout << "Cargos: " << cargos.size() << std::endl;
-    std::cout << "Localizações: " << localizacoes.size() << " países" << std::endl;
-    std::cout << "------------------------------------------------------" << std::endl;
+    // 8. REDUCTION COM BITWISE OR (|)
+    int bitmask_or = 0;
+    #pragma omp parallel for reduction(|:bitmask_or)
+    for (int i = 0; i < N; ++i) {
+        bitmask_or |= inteiros[i];
+    }
+    std::cout << "8. REDUCTION COM BITWISE OR (|):" << std::endl;
+    std::cout << "   Resultado do OR bit a bit: " << bitmask_or << std::endl << std::endl;
+
+    // 9. REDUCTION COM BITWISE XOR (^)
+    int bitwise_xor = 0;
+    #pragma omp parallel for reduction(^:bitwise_xor)
+    for (int i = 0; i < N; ++i) {
+        bitwise_xor ^= inteiros[i];
+    }
+    std::cout << "9. REDUCTION COM BITWISE XOR (^):" << std::endl;
+    std::cout << "   Resultado do XOR bit a bit: " << bitwise_xor << std::endl << std::endl;
+
+    // 10. EXEMPLO PRÁTICO: CÁLCULO DE VARIÂNCIA E DESVIO PADRÃO
+    double media = soma / N;
+    double variancia = 0.0;
     
-    std::cout << std::fixed << std::setprecision(2);
-    std::cout << "ESTATÍSTICAS SALARIAIS (USD):" << std::endl;
-    std::cout << "Média: $" << media << std::endl;
-    std::cout << "Desvio Padrão Amostral: $" << desvio_padrao_amostral << std::endl;
-    std::cout << "Variância Amostral: $" << variancia_amostral << std::endl;
-    std::cout << "Salário Mínimo: $" << salario_minimo << std::endl;
-    std::cout << "Salário Máximo: $" << salario_maximo << std::endl;
-    std::cout << "Coeficiente de Variação: " << std::setprecision(4) 
-              << (desvio_padrao_amostral / media) * 100 << "%" << std::endl;
+    #pragma omp parallel for reduction(+:variancia)
+    for (int i = 0; i < N; ++i) {
+        double diff = dados[i] - media;
+        variancia += diff * diff;
+    }
+    variancia /= (N - 1); // Variância amostral
+    double desvio_padrao = std::sqrt(variancia);
+    
+    std::cout << "10. EXEMPLO PRÁTICO: CÁLCULO ESTATÍSTICO" << std::endl;
+    std::cout << "    Média: " << media << std::endl;
+    std::cout << "    Variância: " << variancia << std::endl;
+    std::cout << "    Desvio Padrão: " << desvio_padrao << std::endl << std::endl;
+
+    // 11. MULTIPLAS REDUCTIONS EM UM MESMO LOOP
+    double soma_multipla = 0.0;
+    double max_multiplo = std::numeric_limits<double>::lowest();
+    double min_multiplo = std::numeric_limits<double>::max();
+    
+    #pragma omp parallel for reduction(+:soma_multipla) reduction(max:max_multiplo) reduction(min:min_multiplo)
+    for (int i = 0; i < N; ++i) {
+        soma_multipla += dados[i];
+        if (dados[i] > max_multiplo) max_multiplo = dados[i];
+        if (dados[i] < min_multiplo) min_multiplo = dados[i];
+    }
+    
+    std::cout << "11. MÚLTIPLAS REDUCTIONS NO MESMO LOOP:" << std::endl;
+    std::cout << "    Soma: " << soma_multipla << std::endl;
+    std::cout << "    Máximo: " << max_multiplo << std::endl;
+    std::cout << "    Mínimo: " << min_multiplo << std::endl;
+    std::cout << "    Amplitude: " << (max_multiplo - min_multiplo) << std::endl << std::endl;
+
+    // 12. COMPARAÇÃO DE DESEMPENHO: COM E SEM REDUCTION
+    std::cout << "12. COMPARAÇÃO DE DESEMPENHO:" << std::endl;
+    
+    // Sem reduction (usando critical)
+    double inicio = omp_get_wtime();
+    double soma_sem_reduction = 0.0;
+    #pragma omp parallel for
+    for (int i = 0; i < N; ++i) {
+        #pragma omp critical
+        soma_sem_reduction += dados[i];
+    }
+    double tempo_sem_reduction = omp_get_wtime() - inicio;
+    
+    // Com reduction
+    inicio = omp_get_wtime();
+    double soma_com_reduction = 0.0;
+    #pragma omp parallel for reduction(+:soma_com_reduction)
+    for (int i = 0; i < N; ++i) {
+        soma_com_reduction += dados[i];
+    }
+    double tempo_com_reduction = omp_get_wtime() - inicio;
+    
+    std::cout << "    Tempo sem reduction (critical): " << tempo_sem_reduction << " segundos" << std::endl;
+    std::cout << "    Tempo com reduction: " << tempo_com_reduction << " segundos" << std::endl;
+    std::cout << "    Speedup: " << (tempo_sem_reduction / tempo_com_reduction) << "x" << std::endl;
+    std::cout << "    Resultados são iguais? " << (soma_sem_reduction == soma_com_reduction ? "Sim" : "Não") << std::endl;
 
     return 0;
 }
