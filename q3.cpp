@@ -1,143 +1,212 @@
 #include <iostream>
 #include <vector>
-#include <cmath>
+#include <string>
 #include <omp.h>
 #include <iomanip>
+#include <cmath>
 
-int main() {
-    // TechNova Corporation - Estrutura organizacional
-    const int DEPARTAMENTOS = 8;
-    const int FUNCIONARIOS_POR_DEPT = 62500; // Total: 500,000 funcionários
-    const int N = DEPARTAMENTOS * FUNCIONARIOS_POR_DEPT;
+struct Funcionario {
+    double salario;
+    int departamento;
+    int idade;
+    double horas_trabalhadas;
+    std::string nome;
     
-    std::vector<std::string> nomes_departamentos = {
-        "Engenharia de Software", "Cloud Computing", "Data Science",
-        "Cybersecurity", "DevOps", "AI Research", 
-        "Mobile Development", "Quality Assurance"
+    Funcionario(double s, int d, int i, double h, const std::string& n) 
+        : salario(s), departamento(d), idade(i), horas_trabalhadas(h), nome(n) {}
+};
+
+// Função para gerar dados de exemplo mais realistas
+std::vector<Funcionario> gerar_dados_funcionarios(int N) {
+    std::vector<Funcionario> funcionarios;
+    funcionarios.reserve(N);
+    
+    std::vector<std::string> nomes = {
+        "Ana Silva", "Carlos Santos", "Maria Oliveira", "João Pereira", 
+        "Fernanda Costa", "Ricardo Lima", "Juliana Alves", "Pedro Souza",
+        "Amanda Rocha", "Lucas Barbosa", "Patrícia Martins", "Roberto Ferreira"
     };
     
-    std::vector<double> salarios(N);
-
-    // Inicialização paralela com salários realistas por departamento
     #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
-        int dept_index = i / FUNCIONARIOS_POR_DEPT;
-        int func_index = i % FUNCIONARIOS_POR_DEPT;
+        double salario = 2000.0 + (i % 100) * 50.0;
+        int departamento = (i % 5) + 1;
+        int idade = 25 + (i % 40);
+        double horas = 160.0 + (i % 80);
+        std::string nome = nomes[i % nomes.size()] + " " + std::to_string(i);
         
-        double salario_base;
+        #pragma omp critical
+        funcionarios.emplace_back(salario, departamento, idade, horas, nome);
+    }
+    
+    return funcionarios;
+}
+
+int main() {
+    const int N = 100000;
+    auto funcionarios = gerar_dados_funcionarios(N);
+    
+    std::cout << "=== AUDITORIA AVANÇADA DE DADOS FUNCIONAIS ===" << std::endl;
+    std::cout << "Total de funcionários: " << N << std::endl << std::endl;
+
+    // CONSTANTES DE NEGÓCIO
+    const double PISO_SALARIAL = 1500.0;
+    const double TETO_SALARIAL = 20000.0;
+    const int IDADE_MINIMA = 18;
+    const int IDADE_MAXIMA = 70;
+    const double HORAS_MINIMAS = 80.0;
+    const double HORAS_MAXIMAS = 220.0;
+
+    // 1. AUDITORIA BÁSICA (similar ao exemplo anterior)
+    bool piso_violado = false;
+    bool teto_violado = false;
+    bool dados_validos = true;
+
+    #pragma omp parallel for \
+        reduction(||:piso_violado, teto_violado) \
+        reduction(&&:dados_validos)
+    for (int i = 0; i < N; ++i) {
+        const auto& f = funcionarios[i];
         
-        // Salário base por departamento (em USD)
-        switch(dept_index) {
-            case 0: // Engenharia de Software
-                salario_base = 120000.0; break;
-            case 1: // Cloud Computing
-                salario_base = 130000.0; break;
-            case 2: // Data Science
-                salario_base = 125000.0; break;
-            case 3: // Cybersecurity
-                salario_base = 135000.0; break;
-            case 4: // DevOps
-                salario_base = 128000.0; break;
-            case 5: // AI Research
-                salario_base = 150000.0; break;
-            case 6: // Mobile Development
-                salario_base = 115000.0; break;
-            case 7: // Quality Assurance
-                salario_base = 95000.0; break;
-            default:
-                salario_base = 100000.0;
+        if (f.salario < PISO_SALARIAL) piso_violado = true;
+        if (f.salario > TETO_SALARIAL) teto_violado = true;
+        if (f.salario <= 0 || f.idade <= 0 || f.horas_trabalhadas <= 0) {
+            dados_validos = false;
+        }
+    }
+
+    std::cout << "1. AUDITORIA BÁSICA DE CONSISTÊNCIA:" << std::endl;
+    std::cout << "   Piso violado: " << (piso_violado ? "SIM" : "NÃO") << std::endl;
+    std::cout << "   Teto violado: " << (teto_violado ? "SIM" : "NÃO") << std::endl;
+    std::cout << "   Dados válidos: " << (dados_validos ? "SIM" : "NÃO") << std::endl << std::endl;
+
+    // 2. AUDITORIA AVANÇADA COM CONTAGEM DE VIOLAÇÕES
+    int violacoes_piso = 0;
+    int violacoes_teto = 0;
+    int violacoes_idade = 0;
+    int violacoes_horas = 0;
+    int violacoes_multiplas = 0;
+
+    #pragma omp parallel for \
+        reduction(+:violacoes_piso, violacoes_teto, violacoes_idade, violacoes_horas, violacoes_multiplas)
+    for (int i = 0; i < N; ++i) {
+        const auto& f = funcionarios[i];
+        int violacoes_local = 0;
+        
+        if (f.salario < PISO_SALARIAL) {
+            violacoes_piso++;
+            violacoes_local++;
+        }
+        if (f.salario > TETO_SALARIAL) {
+            violacoes_teto++;
+            violacoes_local++;
+        }
+        if (f.idade < IDADE_MINIMA || f.idade > IDADE_MAXIMA) {
+            violacoes_idade++;
+            violacoes_local++;
+        }
+        if (f.horas_trabalhadas < HORAS_MINIMAS || f.horas_trabalhadas > HORAS_MAXIMAS) {
+            violacoes_horas++;
+            violacoes_local++;
+        }
+        if (violacoes_local >= 2) {
+            violacoes_multiplas++;
+        }
+    }
+
+    std::cout << "2. ESTATÍSTICAS DETALHADAS DE VIOLAÇÕES:" << std::endl;
+    std::cout << "   Violações de piso salarial: " << violacoes_piso << std::endl;
+    std::cout << "   Violações de teto salarial: " << violacoes_teto << std::endl;
+    std::cout << "   Violações de idade: " << violacoes_idade << std::endl;
+    std::cout << "   Violações de horas: " << violacoes_horas << std::endl;
+    std::cout << "   Funcionários com múltiplas violações: " << violacoes_multiplas << std::endl << std::endl;
+
+    // 3. VERIFICAÇÃO DE CONSISTÊNCIA ENTRE DEPARTAMENTOS
+    bool salarios_consistentes = true;
+    bool horas_consistentes = true;
+    double menor_salario_global = std::numeric_limits<double>::max();
+    double maior_salario_global = std::numeric_limits<double>::lowest();
+
+    #pragma omp parallel for \
+        reduction(&&:salarios_consistentes, horas_consistentes) \
+        reduction(min:menor_salario_global) \
+        reduction(max:maior_salario_global)
+    for (int i = 0; i < N; ++i) {
+        const auto& f = funcionarios[i];
+        
+        // Verifica consistência salarial por departamento
+        double salario_medio_esperado = 3000.0 + f.departamento * 500.0;
+        double margem_erro = salario_medio_esperado * 0.3; // 30% de margem
+        
+        if (std::fabs(f.salario - salario_medio_esperado) > margem_erro) {
+            salarios_consistentes = false;
         }
         
-        // Variação baseada na senioridade (simulada pelo índice do funcionário)
-        double senioridade = 1.0 + (func_index % 10) * 0.1; // 1.0 to 2.0
-        double performance = 0.8 + (func_index % 20) * 0.02; // 0.8 to 1.2
+        // Verifica consistência de horas
+        if (f.horas_trabalhadas < HORAS_MINIMAS || f.horas_trabalhadas > HORAS_MAXIMAS) {
+            horas_consistentes = false;
+        }
         
-        salarios[i] = salario_base * senioridade * performance;
+        // Atualiza min/max
+        if (f.salario < menor_salario_global) menor_salario_global = f.salario;
+        if (f.salario > maior_salario_global) maior_salario_global = f.salario;
     }
 
-    // ---------------------------
-    // 1) MÉDIA POPULACIONAL (μ)
-    // ---------------------------
-    double soma = 0.0;
-    #pragma omp parallel for reduction(+:soma)
-    for (int i = 0; i < N; ++i) {
-        soma += salarios[i];
-    }
-    const double media_populacional = soma / static_cast<double>(N);
-
-    // ----------------------------------------------------
-    // 2) VARIÂNCIA POPULACIONAL (σ²) 
-    //     σ² = (1/N) * Σ (xᵢ − μ)²
-    // ----------------------------------------------------
-    double soma_quadrados_desvios = 0.0;
-    #pragma omp parallel for reduction(+:soma_quadrados_desvios)
-    for (int i = 0; i < N; ++i) {
-        const double desvio = salarios[i] - media_populacional;
-        soma_quadrados_desvios += desvio * desvio;
-    }
-    double variancia_populacional = soma_quadrados_desvios / static_cast<double>(N);
-
-    // Correção para imprecisões numéricas
-    if (variancia_populacional < 0.0 && std::fabs(variancia_populacional) < 1e-12) {
-        variancia_populacional = 0.0;
-    }
-    const double desvio_padrao_populacional = std::sqrt(variancia_populacional);
-
-    // ----------------------------------------------------
-    // 3) VARIÂNCIA AMOSTRAL (s²) para comparação
-    //     s² = (1/(N-1)) * Σ (xᵢ − μ)²
-    // ----------------------------------------------------
-    double variancia_amostral = soma_quadrados_desvios / static_cast<double>(N - 1);
-    const double desvio_padrao_amostral = std::sqrt(variancia_amostral);
-
-    // ----------------------------------------------------
-    // 4) ESTATÍSTICAS ADICIONAIS
-    // ----------------------------------------------------
-    double salario_maximo = 0.0;
-    double salario_minimo = std::numeric_limits<double>::max();
-    double soma_log_salarios = 0.0;
-    
-    #pragma omp parallel for reduction(max:salario_maximo) \
-                             reduction(min:salario_minimo) \
-                             reduction(+:soma_log_salarios)
-    for (int i = 0; i < N; ++i) {
-        if (salarios[i] > salario_maximo) salario_maximo = salarios[i];
-        if (salarios[i] < salario_minimo) salario_minimo = salarios[i];
-        soma_log_salarios += std::log(salarios[i]);
-    }
-    
-    const double media_geometrica = std::exp(soma_log_salarios / N);
-
-    // ----------------------------------------------------
-    // APRESENTAÇÃO DOS RESULTADOS
-    // ----------------------------------------------------
-    std::cout << "============================================================" << std::endl;
-    std::cout << "TECHNOVA CORPORATION - ANÁLISE SALARIAL POPULACIONAL" << std::endl;
-    std::cout << "============================================================" << std::endl;
-    std::cout << "Departamentos: " << DEPARTAMENTOS << std::endl;
-    for (const auto& dept : nomes_departamentos) {
-        std::cout << "  - " << dept << std::endl;
-    }
-    std::cout << "Total de funcionários: " << N << std::endl;
-    std::cout << "------------------------------------------------------------" << std::endl;
-    
+    std::cout << "3. ANÁLISE DE CONSISTÊNCIA:" << std::endl;
     std::cout << std::fixed << std::setprecision(2);
-    std::cout << "ESTATÍSTICAS POPULACIONAIS (USD):" << std::endl;
-    std::cout << "Média Populacional (μ): $" << media_populacional << std::endl;
-    std::cout << "Variância Populacional (σ²): $" << variancia_populacional << std::endl;
-    std::cout << "Desvio Padrão Populacional (σ): $" << desvio_padrao_populacional << std::endl;
-    std::cout << "Média Geométrica: $" << media_geometrica << std::endl;
+    std::cout << "   Salários consistentes por departamento: " << (salarios_consistentes ? "SIM" : "NÃO") << std::endl;
+    std::cout << "   Horas consistentes: " << (horas_consistentes ? "SIM" : "NÃO") << std::endl;
+    std::cout << "   Menor salário: R$ " << menor_salario_global << std::endl;
+    std::cout << "   Maior salário: R$ " << maior_salario_global << std::endl;
+    std::cout << "   Amplitude salarial: R$ " << (maior_salario_global - menor_salario_global) << std::endl << std::endl;
+
+    // 4. DETECÇÃO DE ANOMALIAS ESTATÍSTICAS
+    double soma_salarios = 0.0;
+    double soma_quadrados = 0.0;
+    int contagem_anomalias = 0;
+
+    #pragma omp parallel for \
+        reduction(+:soma_salarios, soma_quadrados, contagem_anomalias)
+    for (int i = 0; i < N; ++i) {
+        soma_salarios += funcionarios[i].salario;
+        soma_quadrados += funcionarios[i].salario * funcionarios[i].salario;
+    }
+
+    double media_salarios = soma_salarios / N;
+    double desvio_padrao = std::sqrt((soma_quadrados / N) - (media_salarios * media_salarios));
     
-    std::cout << "\nESTATÍSTICAS AMOSTRAIS (para comparação):" << std::endl;
-    std::cout << "Variância Amostral (s²): $" << variancia_amostral << std::endl;
-    std::cout << "Desvio Padrão Amostral (s): $" << desvio_padrao_amostral << std::endl;
+    // Segunda passada para detectar anomalias
+    #pragma omp parallel for reduction(+:contagem_anomalias)
+    for (int i = 0; i < N; ++i) {
+        double z_score = std::fabs((funcionarios[i].salario - media_salarios) / desvio_padrao);
+        if (z_score > 3.0) { // Mais de 3 desvios padrão da média
+            contagem_anomalias++;
+        }
+    }
+
+    std::cout << "4. DETECÇÃO DE ANOMALIAS ESTATÍSTICAS:" << std::endl;
+    std::cout << "   Média salarial: R$ " << media_salarios << std::endl;
+    std::cout << "   Desvio padrão: R$ " << desvio_padrao << std::endl;
+    std::cout << "   Anomalias detectadas (Z-score > 3): " << contagem_anomalias << std::endl << std::endl;
+
+    // 5. RELATÓRIO FINAL DE QUALIDADE
+    std::cout << "5. RELATÓRIO FINAL DE QUALIDADE DOS DADOS:" << std::endl;
     
-    std::cout << "\nESTATÍSTICAS DESCRITIVAS:" << std::endl;
-    std::cout << "Salário Mínimo: $" << salario_minimo << std::endl;
-    std::cout << "Salário Máximo: $" << salario_maximo << std::endl;
-    std::cout << "Amplitude: $" << (salario_maximo - salario_minimo) << std::endl;
-    std::cout << "Coeficiente de Variação: " << std::setprecision(4) 
-              << (desvio_padrao_populacional / media_populacional) * 100 << "%" << std::endl;
+    double taxa_erro_total = (violacoes_piso + violacoes_teto + violacoes_idade + violacoes_horas) / (4.0 * N);
+    double qualidade_geral = (1.0 - taxa_erro_total) * 100.0;
+    
+    std::cout << std::fixed << std::setprecision(1);
+    std::cout << "   Qualidade geral dos dados: " << qualidade_geral << "%" << std::endl;
+    
+    if (qualidade_geral >= 95.0) {
+        std::cout << "   STATUS: EXCELENTE" << std::endl;
+    } else if (qualidade_geral >= 90.0) {
+        std::cout << "   STATUS: BOM" << std::endl;
+    } else if (qualidade_geral >= 80.0) {
+        std::cout << "   STATUS: REGULAR" << std::endl;
+    } else {
+        std::cout << "   STATUS: CRÍTICO - Necessita intervenção imediata" << std::endl;
+    }
 
     return 0;
 }
