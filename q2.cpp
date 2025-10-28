@@ -1,133 +1,188 @@
 #include <iostream>
 #include <vector>
+#include <cmath>
 #include <omp.h>
+#include <iomanip>
+#include <random>
+
+// Estrutura para acumular estatísticas online
+struct WelfordAccumulator {
+    double mean;
+    double M2;
+    long long count;
+    
+    WelfordAccumulator() : mean(0.0), M2(0.0), count(0) {}
+};
+
+// Função para combinar acumuladores (necessária para reduction customizada)
+void welford_combine(WelfordAccumulator& a, const WelfordAccumulator& b) {
+    if (b.count == 0) return;
+    if (a.count == 0) {
+        a = b;
+        return;
+    }
+    
+    long long total_count = a.count + b.count;
+    double delta = b.mean - a.mean;
+    
+    a.M2 += b.M2 + delta * delta * a.count * b.count / total_count;
+    a.mean = (a.count * a.mean + b.count * b.mean) / total_count;
+    a.count = total_count;
+}
+
+// Função para atualizar acumulador com novo valor
+void welford_update(WelfordAccumulator& acc, double x) {
+    acc.count++;
+    double delta = x - acc.mean;
+    acc.mean += delta / acc.count;
+    double delta2 = x - acc.mean;
+    acc.M2 += delta * delta2;
+}
 
 int main() {
-    const int N = 200000;
+    const int N = 1000000;
     std::vector<double> salarios(N);
     
-    // BigTech: TechNova Solutions
-    std::vector<std::string> departamentos = {
-        "Engenharia", "Vendas", "Marketing", "RH", "Finanças", "Operações"
-    };
-
-    // Preenche com dados realistas
+    // Gerador de números aleatórios
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::normal_distribution<double> dist(5000.0, 1500.0);
+    
+    // Inicialização dos salários com distribuição normal
     #pragma omp parallel for
     for (int i = 0; i < N; ++i) {
-        int dept_index = i % departamentos.size();
-        
-        // Salários base por departamento
-        if (departamentos[dept_index] == "Engenharia") {
-            salarios[i] = 8000.0 + (i % 50) * 200.0;
-        } else if (departamentos[dept_index] == "Vendas") {
-            salarios[i] = 5000.0 + (i % 40) * 150.0;
-        } else if (departamentos[dept_index] == "Marketing") {
-            salarios[i] = 4500.0 + (i % 35) * 120.0;
-        } else if (departamentos[dept_index] == "RH") {
-            salarios[i] = 4000.0 + (i % 30) * 100.0;
-        } else if (departamentos[dept_index] == "Finanças") {
-            salarios[i] = 7000.0 + (i % 45) * 180.0;
-        } else { // Operações
-            salarios[i] = 3500.0 + (i % 25) * 80.0;
-        }
+        salarios[i] = std::max(1000.0, dist(gen)); // Salário mínimo de R$ 1000
     }
-
-    // Injeta dados problemáticos para auditoria
-    salarios[1000] = 1400.0;      // Viola Regra 1 (abaixo do piso)
-    salarios[20000] = -50.0;      // Viola Regra 3 (salário negativo)
-    salarios[50000] = 25000.0;    // Viola Regra 2 (acima do teto)
-    salarios[75000] = 0.0;        // Viola Regra 3 (salário zero)
-    salarios[100000] = 1499.0;    // Viola Regra 1 (abaixo do piso)
-
-    // Variáveis para auditoria
-    bool piso_violado = false;     // Existe salário abaixo de R$ 1500,00?
-    bool teto_violado = false;     // Existe salário acima de R$ 20000,00?
-    bool dados_validos = true;     // Todos os salários são positivos?
-    bool faixa_ideal = true;       // Todos entre R$ 3000 e R$ 15000?
-
-    const double PISO_SALARIAL = 1500.0;
-    const double TETO_SALARIAL = 20000.0;
-    const double MIN_IDEAL = 3000.0;
-    const double MAX_IDEAL = 15000.0;
-
-    // Auditoria paralela com múltiplas reduções lógicas
-    #pragma omp parallel for \
-        reduction(||:piso_violado, teto_violado) \
-        reduction(&&:dados_validos, faixa_ideal)
-    for (int i = 0; i < N; ++i) {
-        double s = salarios[i];
-
-        // Regra 1: Piso salarial
-        if (s < PISO_SALARIAL) {
-            piso_violado = true;
-        }
-
-        // Regra 2: Teto salarial  
-        if (s > TETO_SALARIAL) {
-            teto_violado = true;
-        }
-
-        // Regra 3: Dados válidos (positivos)
-        if (s <= 0) {
-            dados_validos = false;
-        }
-
-        // Regra 4: Faixa salarial ideal
-        if (s < MIN_IDEAL || s > MAX_IDEAL) {
-            faixa_ideal = false;
-        }
-    }
-
-    // Relatório de Auditoria
-    std::cout << "==================================================" << std::endl;
-    std::cout << "TECHNOVA SOLUTIONS - RELATÓRIO DE AUDITORIA" << std::endl;
-    std::cout << "==================================================" << std::endl;
-    std::cout << "Total de registros auditados: " << N << std::endl;
-    std::cout << "Departamentos: Engenharia, Vendas, Marketing, RH, Finanças, Operações" << std::endl;
-    std::cout << "--------------------------------------------------" << std::endl;
-
-    if (piso_violado) {
-        std::cout << "[ALERTA] Regra 1: Encontrado salário abaixo do piso de R$ " << PISO_SALARIAL << std::endl;
-    } else {
-        std::cout << "[OK] Regra 1: Nenhum salário abaixo do piso encontrado" << std::endl;
-    }
-
-    if (teto_violado) {
-        std::cout << "[ALERTA] Regra 2: Encontrado salário acima do teto de R$ " << TETO_SALARIAL << std::endl;
-    } else {
-        std::cout << "[OK] Regra 2: Nenhum salário acima do teto encontrado" << std::endl;
-    }
-
-    if (!dados_validos) {
-        std::cout << "[CRÍTICO] Regra 3: Encontrados salários inválidos (≤ 0)" << std::endl;
-    } else {
-        std::cout << "[OK] Regra 3: Todos os salários são válidos (> 0)" << std::endl;
-    }
-
-    if (faixa_ideal) {
-        std::cout << "[EXCELENTE] Regra 4: Todos os salários na faixa ideal (R$ " 
-                  << MIN_IDEAL << " - R$ " << MAX_IDEAL << ")" << std::endl;
-    } else {
-        std::cout << "[ATENÇÃO] Regra 4: Alguns salários fora da faixa ideal" << std::endl;
-    }
-
-    // Estatísticas adicionais
-    int count_abaixo_piso = 0;
-    int count_acima_teto = 0;
-    int count_invalidos = 0;
     
-    #pragma omp parallel for reduction(+:count_abaixo_piso, count_acima_teto, count_invalidos)
+    std::cout << "=== CÁLCULO DE VARIÂNCIA - COMPARAÇÃO DE MÉTODOS ===" << std::endl;
+    std::cout << "Tamanho do conjunto: " << N << " salários\n" << std::endl;
+    
+    // MÉTODO 1: Duas passadas (tradicional)
+    std::cout << "1. MÉTODO TRADICIONAL (DUAS PASSADAS):" << std::endl;
+    double inicio = omp_get_wtime();
+    
+    // Primeira passada: calcular média
+    double soma = 0.0;
+    #pragma omp parallel for reduction(+:soma)
     for (int i = 0; i < N; ++i) {
-        if (salarios[i] < PISO_SALARIAL) count_abaixo_piso++;
-        if (salarios[i] > TETO_SALARIAL) count_acima_teto++;
-        if (salarios[i] <= 0) count_invalidos++;
+        soma += salarios[i];
     }
-
-    std::cout << "--------------------------------------------------" << std::endl;
-    std::cout << "DETALHAMENTO:" << std::endl;
-    std::cout << "Salários abaixo do piso: " << count_abaixo_piso << std::endl;
-    std::cout << "Salários acima do teto: " << count_acima_teto << std::endl;
-    std::cout << "Salários inválidos: " << count_invalidos << std::endl;
-
+    double media = soma / N;
+    
+    // Segunda passada: calcular variância
+    double soma_quadrados = 0.0;
+    #pragma omp parallel for reduction(+:soma_quadrados)
+    for (int i = 0; i < N; ++i) {
+        double diff = salarios[i] - media;
+        soma_quadrados += diff * diff;
+    }
+    
+    double variancia_pop_2pass = soma_quadrados / N;
+    double variancia_amostral_2pass = soma_quadrados / (N - 1);
+    double tempo_2pass = omp_get_wtime() - inicio;
+    
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "   Média: R$ " << media << std::endl;
+    std::cout << "   Variância populacional: R$ " << variancia_pop_2pass << std::endl;
+    std::cout << "   Variância amostral: R$ " << variancia_amostral_2pass << std::endl;
+    std::cout << "   Desvio padrão: R$ " << std::sqrt(variancia_pop_2pass) << std::endl;
+    std::cout << "   Tempo: " << std::setprecision(4) << tempo_2pass << " segundos" << std::endl << std::endl;
+    
+    // MÉTODO 2: Uma passada com múltiplas reductions
+    std::cout << "2. MÉTODO UMA PASSADA (MÚLTIPLAS REDUCTIONS):" << std::endl;
+    inicio = omp_get_wtime();
+    
+    double soma1 = 0.0, soma2 = 0.0;
+    #pragma omp parallel for reduction(+:soma1) reduction(+:soma2)
+    for (int i = 0; i < N; ++i) {
+        soma1 += salarios[i];
+        soma2 += salarios[i] * salarios[i];
+    }
+    
+    double media_1pass = soma1 / N;
+    double variancia_pop_1pass = (soma2 - (soma1 * soma1) / N) / N;
+    double variancia_amostral_1pass = (soma2 - (soma1 * soma1) / N) / (N - 1);
+    double tempo_1pass = omp_get_wtime() - inicio;
+    
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "   Média: R$ " << media_1pass << std::endl;
+    std::cout << "   Variância populacional: R$ " << variancia_pop_1pass << std::endl;
+    std::cout << "   Variância amostral: R$ " << variancia_amostral_1pass << std::endl;
+    std::cout << "   Desvio padrão: R$ " << std::sqrt(variancia_pop_1pass) << std::endl;
+    std::cout << "   Tempo: " << std::setprecision(4) << tempo_1pass << " segundos" << std::endl << std::endl;
+    
+    // MÉTODO 3: Algoritmo de Welford (online, numericamente estável)
+    std::cout << "3. ALGORITMO DE WELFORD (ONLINE, UMA PASSADA):" << std::endl;
+    inicio = omp_get_wtime();
+    
+    // Para paralelizar Welford, precisamos de reduction customizada
+    // Vamos usar uma abordagem com seções críticas para demonstração
+    WelfordAccumulator global_acc;
+    
+    #pragma omp parallel
+    {
+        WelfordAccumulator local_acc;
+        
+        #pragma omp for
+        for (int i = 0; i < N; ++i) {
+            welford_update(local_acc, salarios[i]);
+        }
+        
+        #pragma omp critical
+        {
+            welford_combine(global_acc, local_acc);
+        }
+    }
+    
+    double variancia_pop_welford = global_acc.M2 / global_acc.count;
+    double variancia_amostral_welford = global_acc.M2 / (global_acc.count - 1);
+    double tempo_welford = omp_get_wtime() - inicio;
+    
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "   Média: R$ " << global_acc.mean << std::endl;
+    std::cout << "   Variância populacional: R$ " << variancia_pop_welford << std::endl;
+    std::cout << "   Variância amostral: R$ " << variancia_amostral_welford << std::endl;
+    std::cout << "   Desvio padrão: R$ " << std::sqrt(variancia_pop_welford) << std::endl;
+    std::cout << "   Tempo: " << std::setprecision(4) << tempo_welford << " segundos" << std::endl << std::endl;
+    
+    // COMPARAÇÃO DOS MÉTODOS
+    std::cout << "=== COMPARAÇÃO FINAL ===" << std::endl;
+    std::cout << "Diferença na média: R$ " << std::fabs(media - global_acc.mean) << std::endl;
+    std::cout << "Diferença na variância: R$ " << std::fabs(variancia_pop_2pass - variancia_pop_welford) << std::endl;
+    std::cout << std::endl;
+    
+    std::cout << "DESEMPENHO RELATIVO:" << std::endl;
+    std::cout << "2 passadas / 1 passada: " << (tempo_2pass / tempo_1pass) << "x" << std::endl;
+    std::cout << "2 passadas / Welford: " << (tempo_2pass / tempo_welford) << "x" << std::endl;
+    std::cout << "1 passada / Welford: " << (tempo_1pass / tempo_welford) << "x" << std::endl;
+    
+    // ANÁLISE DE PRECISÃO NUMÉRICA
+    std::cout << std::endl << "PRECISÃO NUMÉRICA:" << std::endl;
+    std::cout << std::scientific << std::setprecision(6);
+    std::cout << "Erro relativo 1-passada: " << std::fabs(variancia_pop_1pass - variancia_pop_2pass) / variancia_pop_2pass << std::endl;
+    std::cout << "Erro relativo Welford: " << std::fabs(variancia_pop_welford - variancia_pop_2pass) / variancia_pop_2pass << std::endl;
+    
     return 0;
+}
+
+// Implementação alternativa com user-defined reduction (C++17)
+#pragma omp declare reduction( \
+    welford_combine_reduction : \
+    WelfordAccumulator : \
+    welford_combine(omp_out, omp_in) \
+) initializer(omp_priv = WelfordAccumulator())
+
+void exemplo_com_user_defined_reduction() {
+    const int N = 100000;
+    std::vector<double> dados(N, 1.0);
+    
+    WelfordAccumulator acc;
+    
+    // Esta versão requer suporte completo a user-defined reduction
+    #pragma omp parallel for reduction(welford_combine_reduction:acc)
+    for (int i = 0; i < N; ++i) {
+        welford_update(acc, dados[i]);
+    }
+    
+    std::cout << "User-defined reduction - Média: " << acc.mean << std::endl;
 }
